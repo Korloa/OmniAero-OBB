@@ -705,13 +705,15 @@ class Fusion(nn.Module):
         self.act = nn.SiLU() if act is True else (act if isinstance(act, nn.Module) else nn.Identity())
 
     def forward(self, x):
-        """
-        前向传播逻辑
-        x: [Batch, 4, Height, Width]
-        """
-        # --- 步骤 A: 模态物理解耦 (Modality Split) ---
-        x_rgb = x[:, :3, :, :]  # 提取前 3 个通道 (RGB)
-        x_ir = x[:, 3:4, :, :]  # 提取最后 1 个通道 (IR)
+
+        if x.shape[1] == 3:
+            # 如果输入是 3 通道（说明是 YOLO 初始化在测 stride）
+            x_rgb = x  # RGB 直接拿这 3 个通道
+            x_ir = torch.zeros_like(x[:, 0:1, :, :])  # 伪造 1 个同尺寸的全 0 通道给 IR
+        else:
+            # 如果输入 >= 4 通道（说明是真正的训练数据进来了）
+            x_rgb = x[:, :3, :, :]  # 提取前 3 个通道 (RGB)
+            x_ir = x[:, 3:4, :, :]  # 提取第 4 个通道 (IR)
 
         # --- 步骤 B: 独立空间特征提取 (Spatial Feature Extraction) ---
         feat_rgb = self.conv_rgb(x_rgb)  # 得到 RGB 高级特征 [B, c2, H, W]
