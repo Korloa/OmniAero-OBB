@@ -667,3 +667,29 @@ class Index(nn.Module):
             (torch.Tensor): Selected tensor.
         """
         return x[self.index]
+
+
+# Zhang written
+class Fusion(nn.Module):
+    def __init__(self,c1,c2,k,s,p,g,d,act):
+        """Initialize Fusion module.
+        Args:
+            c1 输入通道数
+            c2 融合后的输出通道数
+            k   卷积核大小
+            s   卷积核步长
+            p   填充
+            g   分组
+            d   膨胀率
+            act
+            """
+        super().__init__()
+        from .conv import autopad
+        pad = autopad(k,p,d)    # autopad 会返回一个值或一个列表，代表补几圈0
+
+        self.conv_rgb =  nn.Conv2d(3,c2,k,s,pad,groups=g,dilation=d,bias=False)
+        self.conv_ir  =  nn.Conv2d(c2,c1,k,s,pad,groups=g,dilation=d,bias=False)
+
+        hiiden_dim =  max(8,c2 // 2)
+
+

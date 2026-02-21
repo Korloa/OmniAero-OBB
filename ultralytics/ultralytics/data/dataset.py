@@ -1,5 +1,4 @@
 # Ultralytics 🚀 AGPL-3.0 License - https://ultralytics.com/license
-
 from __future__ import annotations
 
 import json
@@ -87,28 +86,49 @@ class YOLODataset(BaseDataset):
         assert not (self.use_segments and self.use_keypoints), "Can not use both segments and keypoints."
         super().__init__(*args, channels=self.data.get("channels", 3), **kwargs)
 
-    def load_image(self, i , rect_mode=False):
-        image,file_path,file_name = super().load_image(i,rect_mode=rect_mode)
-        p = Path(file_path)  # train/trainimg/001.jpg
-        ir_dir_name = p.parent.name + "r"  # trainimgr
+    #Zhang written
+    def load_image(self, i, rect_mode=False):
+        # 1. 修正解包逻辑：父类返回的是 (image, (h0, w0), (h, w))
+        # image: 图像数据 (H, W, 3)
+        # (h0, w0): 原始尺寸
+        # (h, w): 当前 resize 后的尺寸
+        image, (h0, w0), (h, w) = super().load_image(i, rect_mode=rect_mode)
+
+        # 2. 获取当前图像的路径：从 self.im_files 列表中通过索引获取
+        file_path = self.im_files[i]
+        p = Path(file_path)  # 例如: train/images/001.jpg
+
+        # 3. 构造 IR 路径逻辑
+        # p.parent.name 是 "images"
+        # ir_dir_name 变为 "imagesr"
+        ir_dir_name = p.parent.name + "r"
         ir_path = p.parent.parent / ir_dir_name / p.name
-                    # train    trainimgr   001.jpg
+
+        # 4. 处理红外图像
         if ir_path.exists():
-            ir = cv2.imread(str(ir_path),cv2.IMREAD_GRAYSCALE)
+            # 读取灰度图
+            ir = cv2.imread(str(ir_path), cv2.IMREAD_GRAYSCALE)
+
             if ir is not None:
-                if ir.shape != image.shape[:2]:
+                # 检查尺寸是否一致（虽然 YOLO 通常会对齐，但手动 Resize 更稳健）
+                if ir.shape[:2] != image.shape[:2]:
                     ir = cv2.resize(ir, (image.shape[1], image.shape[0]))
 
-                ir = ir[...,None]
+                # 增加维度 (H, W) -> (H, W, 1)
+                ir = ir[..., None]
 
+                # 通道拼接: BGR(3) + IR(1) -> (H, W, 4)
                 image = np.concatenate([image, ir], axis=2)
-
             else:
-                raise IOError("IR Image {} not found.".format(file_path))
+                # 如果文件存在但读取失败（损坏）
+                raise IOError(f"无法读取 IR 图像文件: {ir_path}")
         else:
-            raise FileNotFoundError("IR Image Directory {} not found.".format(file_path))
+            # 如果 IR 图像根本不存在
+            raise FileNotFoundError(f"未找到对应的 IR 图像: {ir_path}，请检查文件夹名末尾是否带 'r'")
 
-        return image,file_path,file_name
+        # 5. 【极其重要】返回值的格式必须与父类保持一致
+        # 否则后续的 get_image_and_label 会再次报 TypeError
+        return image, (h0, w0), (h, w)
 
 
 
