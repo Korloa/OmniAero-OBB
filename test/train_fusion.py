@@ -15,15 +15,17 @@ if __name__ == '__main__':
 
     # 3. 开始训练
     model.train(
-        data="./test/dataset.yaml",  # 你的数据集配置文件
-        imgsz=640,
-        epochs=100,
-        batch=16,  # 显存不够就改小
-        workers=8,
+        data="/mnt/workspace/OmniAero-OBB/test/dataset.yaml", 
+        imgsz=800,           # 【提升】从 640 提升到 800，增强小目标识别
+        epochs=150,          # 【增加】给大数据集更多学习时间
+        batch=56,            # 【提升】20G 显存建议从 64 起步试试
+        workers=8,          # 【提升】加快数据加载
         device=0,
-        amp=False,
+        amp=True,
+        patience=50,         # 【新增】50次迭代没提升再停止
         # === 关键参数 ===
-        hsv_h=0.0, hsv_s=0.0, hsv_v=0.0,  # 必须关闭 HSV，否则 4 通道会报错
-        mosaic=1.0,  # 开启马赛克增强，提升小目标效果
-        name="OmniAero_Fusion_test01"  # 实验名字
+        hsv_h=0.0, hsv_s=0.0, hsv_v=0.0, 
+        mosaic=1.0, 
+        mixup=0.1,           # 【新增】增加 mixup 增强，防止过拟合
+        name="OmniAero_Fusion_HighRes" 
     )
