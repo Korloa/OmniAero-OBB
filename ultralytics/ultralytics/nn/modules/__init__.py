@@ -77,6 +77,7 @@ from .conv import (
     SpatialAttention,
     Fusion
 )
+from .fusion_cbam import CBAMFusion
 from .head import (
     OBB,
     OBB26,
@@ -115,6 +116,7 @@ __all__ = (
     "C3",
     "C3TR",
     "CBAM",
+    "CBAMFusion",
     "CIB",
     "DFL",
     "ELAN1",
