@@ -94,6 +94,11 @@ class YOLODataset(BaseDataset):
         # (h, w): 当前 resize 后的尺寸
         image, (h0, w0), (h, w) = super().load_image(i, rect_mode=rect_mode)
 
+        channels = self.data.get('ch', 3)
+
+        if channels == 3:
+            return image, (h0, w0), (h, w)
+
         # 2. 获取当前图像的路径：从 self.im_files 列表中通过索引获取
         file_path = self.im_files[i]
         p = Path(file_path)  # 例如: train/images/001.jpg

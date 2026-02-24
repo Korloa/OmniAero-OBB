@@ -1,0 +1,14 @@
+path: /mnt/workspace/OmniAero-OBB/src/dataset
+train: train/images/train
+val: val/images/val
+test: test/images/test 
+
+names:
+  0: 'bus'
+  1: 'car'
+  2: 'feright_car'
+  3: 'truck'
+  4: 'van'
+
+ch: 3     
+task: obb
