@@ -27,5 +27,5 @@ if __name__ == '__main__':
         mixup=0.1,           # 必须一致
         
         project='runs/obb',  # 统一保存在 runs/obb 下，方便管理
-        name='Baseline_RGB_HighRes' 
+        name='Baseline_IR_HighRes' 
     )
