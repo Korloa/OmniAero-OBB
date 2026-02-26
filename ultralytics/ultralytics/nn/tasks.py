@@ -77,6 +77,7 @@ from ultralytics.nn.modules import (
     C2f_Transformer,
     CBAM,
 )
+from ultralytics.nn.modules.fusion_cbam import CBAMFusion
 from ultralytics.utils import DEFAULT_CFG_DICT, LOGGER, YAML, colorstr, emojis
 from ultralytics.utils.checks import check_requirements, check_suffix, check_yaml
 from ultralytics.utils.loss import (
@@ -1712,6 +1713,10 @@ def parse_model(d, ch, verbose=True):
             args = [c1, c2, *args[1:]]
         elif m is CBFuse:
             c2 = ch[f[-1]]
+        elif m is CBAMFusion:
+            c1 = ch[f]
+            c2 = c1  # CBAMFusion 保持输入输出通道数一致
+            args = [c2]  # 只需要传入通道数
         elif m in frozenset({TorchVision, Index}):
             c2 = args[0]
             c1 = ch[f]
