@@ -24,7 +24,8 @@ __all__ = (
     "LightConv",
     "RepConv",
     "SpatialAttention",
-    "Fusion"
+    "Fusion",
+    "SCBFusion",
 )
 
 
@@ -591,7 +592,7 @@ class CBAM(nn.Module):
         spatial_attention (SpatialAttention): Spatial attention module.
     """
 
-    def __init__(self, c1, kernel_size=7):
+    def __init__(self, c1,c2=None, kernel_size=7):
         """Initialize CBAM with given parameters.
 
         Args:
@@ -736,3 +737,85 @@ class Fusion(nn.Module):
 
         # --- 步骤 E: 输出 ---
         return self.act(self.bn(feat_fused))
+
+# ====================================================================
+# 模块名：SCBFusion (Spatial Cross-Bipolar Fusion)
+# 作用：作为Stem层，负责多模态数据的解耦、极性评估、排雷与融合
+# ====================================================================
+class SCBFusion(nn.Module):
+    def __init__(self, c1, c2, k=3, s=2, p=None, g=1, d=1, act=True):
+        """
+        c1: 输入通道数 (4)
+        c2: 输出通道数 (如 64)
+        """
+        super().__init__()
+        # 使用 YOLO 官方自适应填充
+        from .conv import autopad
+        pad = autopad(k, p, d)
+
+        # 1. 模态物理拆分与独立特征提取
+        # RGB支路 (3通道)
+        self.conv_rgb = nn.Conv2d(3, c2, k, s, pad, groups=g, dilation=d, bias=False)
+        # IR支路 (1通道)
+        self.conv_ir = nn.Conv2d(1, c2, k, s, pad, groups=g, dilation=d, bias=False)
+
+        # 2. 联合极性评估头 (Bipolar Assessment Head)
+        # 作用：生成 [-1, 1] 的空间极性图
+        hidden_dim = max(16, c2 // 4)
+        self.polarity_head = nn.Sequential(
+            nn.Conv2d(c2 * 2, hidden_dim, kernel_size=3, padding=1, bias=False),
+            nn.BatchNorm2d(hidden_dim),
+            nn.SiLU(inplace=True),
+            # 输出 2 个通道，分别对应 M_rgb 和 M_ir
+            nn.Conv2d(hidden_dim, 2, kernel_size=3, padding=1),
+            # 核心：Tanh 映射到 [-1, 1]
+            nn.Tanh()
+        )
+
+        # 3. 后处理
+        self.bn = nn.BatchNorm2d(c2)
+        self.act = nn.SiLU() if act is True else (act if isinstance(act, nn.Module) else nn.Identity())
+
+    def forward(self, x):
+        # --- 兼容性修复：处理 YOLO 初始化时的 3 通道测试张量 ---
+        if x.shape[1] == 3:
+            # 伪造 IR 数据，防止代码崩溃
+            x_rgb = x
+            x_ir = torch.zeros_like(x[:, 0:1, :, :])
+        else:
+            # 正常的 4 通道数据 (B, 4, H, W)
+            x_rgb = x[:, :3, :, :]
+            x_ir = x[:, 3:4, :, :]
+
+        # A. 提取独立特征
+        f_rgb = self.conv_rgb(x_rgb)
+        f_ir = self.conv_ir(x_ir)
+
+        # B. 生成空间极性图
+        # Concat 让网络拥有全局对比视野
+        polarized_maps = self.polarity_head(torch.cat([f_rgb, f_ir], dim=1))
+        M_rgb = polarized_maps[:, 0:1, :, :]  # RGB 的自信度 [-1, 1]
+        M_ir = polarized_maps[:, 1:2, :, :]  # IR 的自信度 [-1, 1]
+
+        # ========================================================
+        # C. 核心逻辑：交叉一票否决 (Cross-Veto Mechanism)
+        # ========================================================
+
+        # 1. 自身增益 (Boost): 越自信，特征越强 (0~2)
+        boost_rgb = 1.0 + M_rgb
+        boost_ir = 1.0 + M_ir
+
+        # 2. 交叉许可 (Gate): 只有对方不反对(-1)，我才能通过
+        # Clamp(..., 0, 1) 确保 Gate 不会变成负数
+        gate_rgb_to_ir = torch.clamp(1.0 + M_rgb, min=0.0, max=1.0)  # RGB 给 IR 的通行证
+        gate_ir_to_rgb = torch.clamp(1.0 + M_ir, min=0.0, max=1.0)  # IR 给 RGB 的通行证
+
+        # 3. 最终权重计算
+        w_rgb = boost_rgb * gate_ir_to_rgb
+        w_ir = boost_ir * gate_rgb_to_ir
+
+        # D. 协同融合
+        fused_feat = (f_rgb * w_rgb) + (f_ir * w_ir)
+
+        # E. 输出
+        return self.act(self.bn(fused_feat))

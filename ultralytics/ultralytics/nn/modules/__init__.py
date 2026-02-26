@@ -59,6 +59,7 @@ from .block import (
     ResNetLayer,
     SCDown,
     TorchVision,
+    C2f_Transformer,
 )
 from .conv import (
     CBAM,
@@ -75,7 +76,8 @@ from .conv import (
     LightConv,
     RepConv,
     SpatialAttention,
-    Fusion
+    Fusion,
+    SCBFusion
 )
 from .head import (
     OBB,
@@ -188,5 +190,8 @@ __all__ = (
     "YOLOESegment",
     "YOLOESegment26",
     "v10Detect",
+
     "Fusion",
+    "SCBFusion",
+    "C2f_Transformer",
 )

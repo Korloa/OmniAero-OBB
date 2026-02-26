@@ -52,6 +52,7 @@ __all__ = (
     "ResNetLayer",
     "SCDown",
     "TorchVision",
+    "C2f_Transformer",
 )
 
 
@@ -2065,3 +2066,62 @@ class RealNVP(nn.Module):
             self.float()
         z, log_det = self.backward_p(x)
         return self.prior.log_prob(z) + log_det
+
+
+import torch
+import torch.nn as nn
+
+
+# ====================================================================
+# 子模块：TransformerBlock (视觉Transformer编码器)
+# ====================================================================
+class TransformerBlock(nn.Module):
+    def __init__(self, c1, c2, num_heads, num_layers):
+        super().__init__()
+        self.conv = None
+        if c1 != c2:
+            self.conv = nn.Conv2d(c1, c2, 1, 1, 0, bias=False)
+        self.linear = nn.Linear(c2, c2)  # 线性层
+        # 使用 PyTorch 原生 TransformerEncoder
+        self.tr = nn.Sequential(
+            *(nn.TransformerEncoderLayer(d_model=c2, nhead=num_heads, dim_feedforward=c2 * 4, activation='relu') for _
+              in range(num_layers)))
+        self.c2 = c2
+
+    def forward(self, x):
+        if self.conv is not None:
+            x = self.conv(x)
+        b, _, w, h = x.shape
+        # 维度转换: [B, C, W, H] -> [W*H, B, C] (适配 Transformer 输入)
+        p = x.flatten(2).permute(2, 0, 1)
+        # 经过 Transformer 并还原维度
+        return self.tr(p).permute(1, 2, 0).reshape(b, self.c2, w, h)
+
+
+# ====================================================================
+# 模块名：C2f_Transformer
+# 作用：结合 CSPNet 的梯度流优势和 Transformer 的全局感受野
+# 位置：通常放在 Backbone 的最深层 (P5)
+# ====================================================================
+class C2f_Transformer(nn.Module):
+    def __init__(self, c1, c2, n=1, shortcut=False, g=1, e=0.5):
+        """
+        c1: 输入通道数
+        c2: 输出通道数
+        n:  Bottleneck 的数量
+        e:  扩张率 (expansion ratio)
+        """
+        super().__init__()
+        self.c = int(c2 * e)  # hidden channels
+        self.cv1 = nn.Conv2d(c1, 2 * self.c, 1, 1, bias=False)
+        self.cv2 = nn.Conv2d((2 + n) * self.c, c2, 1, 1, bias=False)
+
+        # 核心修改：使用 TransformerBlock 替换普通的 Bottleneck
+        # num_heads=4, num_layers=1 (保持轻量，防止计算量爆炸)
+        self.m = nn.ModuleList(TransformerBlock(self.c, self.c, num_heads=4, num_layers=1) for _ in range(n))
+
+    def forward(self, x):
+        # CSPNet 的分流与堆叠逻辑
+        y = list(self.cv1(x).chunk(2, 1))
+        y.extend(m(y[-1]) for m in self.m)
+        return self.cv2(torch.cat(y, 1))
