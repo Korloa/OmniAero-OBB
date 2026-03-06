@@ -78,7 +78,17 @@ from .conv import (
     SpatialAttention,
     Fusion,
     SCBFusion,
-    CBAMFusion
+
+    CBAMFusion,
+    ConvSplitRGB,
+    ConvSplitThermal,
+    ChannelAttentionNew,
+    SpatialAttentionNew,
+    CBAM_Module,
+    CrossModalFusion,
+    DilatedBottleneck,
+    DilatedC2f
+
 )
 from .head import (
     OBB,
@@ -196,4 +206,12 @@ __all__ = (
     "SCBFusion",
     "C2f_Transformer",
     "CBAMFusion",
+    "ConvSplitRGB",
+    "ConvSplitThermal",
+    "ChannelAttention",
+    "SpatialAttention",
+    "CBAM_Module",
+    "Cross_ModelFusion",
+    "DilatedBottleneck",
+    "DilatedC2f"
 )

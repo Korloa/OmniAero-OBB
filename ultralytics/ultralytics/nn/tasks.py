@@ -76,7 +76,15 @@ from ultralytics.nn.modules import (
     SCBFusion,
     C2f_Transformer,
     CBAM,
-    CBAMFusion
+    CBAMFusion,
+    ConvSplitRGB,
+    ConvSplitThermal,
+    ChannelAttentionNew,
+    SpatialAttentionNew,
+    CBAM_Module,
+    CrossModalFusion,
+    DilatedBottleneck,
+    DilatedC2f,
 )
 from ultralytics.utils import DEFAULT_CFG_DICT, LOGGER, YAML, colorstr, emojis
 from ultralytics.utils.checks import check_requirements, check_suffix, check_yaml
@@ -102,6 +110,9 @@ from ultralytics.utils.torch_utils import (
     smart_inference_mode,
     time_sync,
 )
+
+from ultralytics.ultralytics.nn.modules import ConvSplitRGB, ConvSplitThermal, ChannelAttentionNew, SpatialAttentionNew, \
+    CBAM_Module, CrossModalFusion, DilatedBottleneck, DilatedC2f
 
 
 class BaseModel(torch.nn.Module):
@@ -1611,7 +1622,15 @@ def parse_model(d, ch, verbose=True):
             SCBFusion,
             C2f_Transformer,
             CBAM,
-            CBAMFusion
+            CBAMFusion,
+            ConvSplitRGB,
+            ConvSplitThermal,
+            ChannelAttentionNew,
+            SpatialAttentionNew,
+            CBAM_Module,
+            CrossModalFusion,
+            DilatedBottleneck,
+            DilatedC2f,
         }
     )
     repeat_modules = frozenset(  # modules with 'repeat' arguments

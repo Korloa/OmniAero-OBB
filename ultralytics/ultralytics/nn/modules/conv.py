@@ -26,7 +26,15 @@ __all__ = (
     "SpatialAttention",
     "Fusion",
     "SCBFusion",
-    "CBAMFusion"
+    "CBAMFusion",
+    "ConvSplitRGB",
+    "ConvSplitThermal",
+    "ChannelAttentionNew",
+    "SpatialAttentionNew",
+    "CBAM_Module",
+    "CrossModalFusion",
+    "DilatedBottleneck",
+    "DilatedC2f"
 )
 
 
@@ -889,3 +897,103 @@ class CBAMFusion(nn.Module):
 
         out = feat_color * (1 + w_spatial)
         return self.act(self.bn(out))
+
+
+class ConvSplitRGB(Conv):
+    """提取前3个通道(BGR/RGB)送入可见光分支"""
+    def __init__(self, c1, c2, k=1, s=1, p=None, g=1, d=1, act=True):
+        # 不管上层传进来 c1 是多少(4)，强制告诉父类真实输入是 3
+        super().__init__(3, c2, k, s, p, g, d, act)
+
+    def forward(self, x):
+        # 切片提取 0, 1, 2 通道
+        return super().forward(x[:, :3, :, :])
+
+class ConvSplitThermal(Conv):
+    """提取第4个通道(IR/Thermal)送入热成像分支"""
+    def __init__(self, c1, c2, k=1, s=1, p=None, g=1, d=1, act=True):
+        # 强制告诉父类真实输入是 1 (纯灰度)
+        super().__init__(1, c2, k, s, p, g, d, act)
+
+    def forward(self, x):
+        # 切片提取第 3 通道，保持张量维度为 [B, 1, H, W]
+        return super().forward(x[:, 3:4, :, :])
+
+# ================= 2. 完整正版 CBAM (含最大池化，死磕小目标高热点) =================
+class ChannelAttentionNew(nn.Module):
+    def __init__(self, in_planes, ratio=16):
+        super().__init__()
+        self.avg_pool = nn.AdaptiveAvgPool2d(1)
+        self.max_pool = nn.AdaptiveMaxPool2d(1)
+        self.fc = nn.Sequential(
+            nn.Conv2d(in_planes, in_planes // ratio, 1, bias=False),
+            nn.ReLU(),
+            nn.Conv2d(in_planes // ratio, in_planes, 1, bias=False)
+        )
+        self.sigmoid = nn.Sigmoid()
+
+    def forward(self, x):
+        return self.sigmoid(self.fc(self.avg_pool(x)) + self.fc(self.max_pool(x)))
+
+class SpatialAttentionNew(nn.Module):
+    def __init__(self, kernel_size=7):
+        super().__init__()
+        self.conv = nn.Conv2d(2, 1, kernel_size, padding=kernel_size//2, bias=False)
+        self.sigmoid = nn.Sigmoid()
+
+    def forward(self, x):
+        avg_out = torch.mean(x, dim=1, keepdim=True)
+        max_out, _ = torch.max(x, dim=1, keepdim=True)
+        return self.sigmoid(self.conv(torch.cat([avg_out, max_out], dim=1)))
+
+class CBAM_Module(nn.Module):
+    def __init__(self, c1):
+        super().__init__()
+        self.ca = ChannelAttention(c1)
+        self.sa = SpatialAttention()
+
+    def forward(self, x):
+        x = x * self.ca(x)
+        return x * self.sa(x)
+
+# ================= 3. 跨模态注意力融合模块 =================
+class CrossModalFusion(nn.Module):
+    """融合来自 RGB 和 Thermal 的特征，经过 CBAM 提纯后降维"""
+    def __init__(self, c1): # 这里的 c1 是单模态特征的通道数
+        super().__init__()
+        self.cbam = CBAM_Module(c1 * 2)
+        # 将拼接后的 2*c1 通道，浓缩回 c1 通道
+        self.cv = Conv(c1 * 2, c1, 1, 1)
+
+    def forward(self, x):
+        # YAML 中 f 是列表 [rgb_layer, ir_layer]，所以 x 也是一个列表
+        cat_feat = torch.cat(x, dim=1) # 拼接
+        return self.cv(self.cbam(cat_feat))
+
+# ================= 4. 空洞卷积特征金字塔增强 =================
+class DilatedBottleneck(nn.Module):
+    def __init__(self, c1, c2, shortcut=True, g=1, k=(3, 3), e=0.5, dilation=2):
+        super().__init__()
+        c_ = int(c2 * e)
+        self.cv1 = Conv(c1, c_, k[0], 1)
+        # 加入 dilation 空洞参数，扩大感受野抑制误检
+        self.cv2 = Conv(c_, c2, k[1], 1, p=dilation, d=dilation, g=g)
+        self.add = shortcut and c1 == c2
+
+    def forward(self, x):
+        return x + self.cv2(self.cv1(x)) if self.add else self.cv2(self.cv1(x))
+
+class DilatedC2f(nn.Module):
+    """集成空洞卷积的 C2f，用于替换 Neck 层的标准 C2f"""
+    def __init__(self, c1, c2, n=1, shortcut=False, g=1, e=0.5):
+        super().__init__()
+        self.c = int(c2 * e)
+        self.cv1 = Conv(c1, 2 * self.c, 1, 1)
+        self.cv2 = Conv((2 + n) * self.c, c2, 1)
+        # 固定膨胀率为 2，保持 YAML 调用与原生 C2f 一致
+        self.m = nn.ModuleList(DilatedBottleneck(self.c, self.c, shortcut, g, k=(3, 3), e=1.0, dilation=2) for _ in range(n))
+
+    def forward(self, x):
+        y = list(self.cv1(x).chunk(2, 1))
+        y.extend(m(y[-1]) for m in self.m)
+        return self.cv2(torch.cat(y, 1))
