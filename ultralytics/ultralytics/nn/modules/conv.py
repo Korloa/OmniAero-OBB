@@ -917,6 +917,9 @@ class ConvSplitThermal(Conv):
 
     def forward(self, x):
         # 切片提取第 3 通道，保持张量维度为 [B, 1, H, W]
+        if x.shape[1] < 4:
+            # 返回一个全 0 的单通道 Tensor，形状兼容，仅仅为了不让 Stride 计算报错
+            return super().forward(x[:, 0:1, :, :])
         return super().forward(x[:, 3:4, :, :])
 
 # ================= 2. 完整正版 CBAM (含最大池化，死磕小目标高热点) =================
@@ -949,8 +952,8 @@ class SpatialAttentionNew(nn.Module):
 class CBAM_Module(nn.Module):
     def __init__(self, c1):
         super().__init__()
-        self.ca = ChannelAttention(c1)
-        self.sa = SpatialAttention()
+        self.ca = ChannelAttentionNew(c1)
+        self.sa = SpatialAttentionNew()
 
     def forward(self, x):
         x = x * self.ca(x)

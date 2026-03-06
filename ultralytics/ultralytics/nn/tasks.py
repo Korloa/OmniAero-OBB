@@ -111,7 +111,7 @@ from ultralytics.utils.torch_utils import (
     time_sync,
 )
 
-from ultralytics.ultralytics.nn.modules import ConvSplitRGB, ConvSplitThermal, ChannelAttentionNew, SpatialAttentionNew, \
+from ultralytics.nn.modules import ConvSplitRGB, ConvSplitThermal, ChannelAttentionNew, SpatialAttentionNew, \
     CBAM_Module, CrossModalFusion, DilatedBottleneck, DilatedC2f
 
 
@@ -1628,7 +1628,7 @@ def parse_model(d, ch, verbose=True):
             ChannelAttentionNew,
             SpatialAttentionNew,
             CBAM_Module,
-            CrossModalFusion,
+            # CrossModalFusion,
             DilatedBottleneck,
             DilatedC2f,
         }
@@ -1737,6 +1737,12 @@ def parse_model(d, ch, verbose=True):
             c2 = args[0]
             c1 = ch[f]
             args = [*args[1:]]
+
+        elif m is CrossModalFusion:
+            # f 是列表 [5, 15]，我们取第一个输入的通道数 (RGB分支)
+            c1 = ch[f[0]]
+            c2 = c1  # 输出通道数等于输入通道数
+            args = [c1]  # 重新构造参数传给 __init__
         else:
             c2 = ch[f]
 

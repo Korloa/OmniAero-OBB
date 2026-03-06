@@ -3,7 +3,7 @@ from ultralytics import YOLO
 
 if __name__ == '__main__':
     # 1. 加载模型结构
-    model = YOLO("ultralytics/cfg/models/v8/yolov8-cbam.yaml")
+    model = YOLO("ultralytics/cfg/models/v8/yolov8-rgbt.yaml")
 
     # 2. 加载预训练权重 (迁移学习)
     # YOLO 会自动跳过形状不匹配的第一层，加载后面匹配的层
