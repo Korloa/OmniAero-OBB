@@ -1,0 +1,53 @@
+// Optimized RGBT YOLOv8
+digraph {
+	rankdir=LR size="15,10" splines=ortho
+	node [fontname="Microsoft YaHei" fontsize=10 shape=box style="filled, rounded"]
+	input [label="输入: RGBT (4通道)" fillcolor="#E3F2FD"]
+	id0 [label="0: Identity" fillcolor="#E3F2FD"]
+	input -> id0
+	subgraph cluster_rgb {
+		color=blue label="可见光分支 (RGB Branch)" style=dashed
+		rgb_p12 [label="1-3: P2 特征" fillcolor="#BBDEFB"]
+		rgb_p3 [label="4-5: RGB-P3" fillcolor="#90CAF9"]
+		rgb_p4 [label="6-7: RGB-P4" fillcolor="#90CAF9"]
+		rgb_p5 [label="8-10: RGB-P5 (SPPF)" fillcolor="#64B5F6"]
+		rgb_p12 -> rgb_p3
+		rgb_p3 -> rgb_p4
+		rgb_p4 -> rgb_p5
+	}
+	subgraph cluster_thermal {
+		color=red label="红外分支 (Thermal Branch)" style=dashed
+		t_p12 [label="11-13: P2 特征" fillcolor="#FFCDD2"]
+		t_p3 [label="14-15: T-P3" fillcolor="#EF9A9A"]
+		t_p4 [label="16-17: T-P4" fillcolor="#EF9A9A"]
+		t_p5 [label="18-20: T-P5 (SPPF)" fillcolor="#E57373"]
+		t_p12 -> t_p3
+		t_p3 -> t_p4
+		t_p4 -> t_p5
+	}
+	id0 -> rgb_p12
+	id0 -> t_p12
+	f21 [label="21: CBAM 融合 P3" fillcolor="#C8E6C9" shape=hexagon]
+	f22 [label="22: CBAM 融合 P4" fillcolor="#C8E6C9" shape=hexagon]
+	f23 [label="23: CBAM 融合 P5" fillcolor="#C8E6C9" shape=hexagon]
+	rgb_p3 -> f21
+	t_p3 -> f21
+	rgb_p4 -> f22
+	t_p4 -> f22
+	rgb_p5 -> f23
+	t_p5 -> f23
+	subgraph cluster_head {
+		color=green label="增强检测头 (Head)"
+		n26 [label="26: Dilated-P4" fillcolor="#FFF176"]
+		n29 [label="29: Dilated-P3" fillcolor="#FFF176"]
+		n35 [label="35: C2f-P5" fillcolor="#FFF176"]
+		detect [label="36: Detect Head" fillcolor="#F8BBD0" shape=doubleoctagon]
+		n29 -> detect [label="小目标"]
+		n26 -> detect [label="中目标"]
+		n35 -> detect [label="大目标"]
+	}
+	f23 -> n26 [style=dotted]
+	f22 -> n26
+	f21 -> n29
+	f23 -> n35
+}

@@ -85,6 +85,7 @@ from ultralytics.nn.modules import (
     CrossModalFusion,
     DilatedBottleneck,
     DilatedC2f,
+    Fusion_V2
 )
 from ultralytics.utils import DEFAULT_CFG_DICT, LOGGER, YAML, colorstr, emojis
 from ultralytics.utils.checks import check_requirements, check_suffix, check_yaml
@@ -1631,6 +1632,7 @@ def parse_model(d, ch, verbose=True):
             # CrossModalFusion,
             DilatedBottleneck,
             DilatedC2f,
+            Fusion_V2
         }
     )
     repeat_modules = frozenset(  # modules with 'repeat' arguments

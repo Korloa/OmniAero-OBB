@@ -1,0 +1,86 @@
+// RGBT Dual-Stream YOLOv8
+digraph {
+	rankdir=TB size="12,12"
+	node [fontname=Arial shape=box style="filled, rounded"]
+	input [label="Input: RGB-T (4-channel)
+[B, 4, H, W]" fillcolor="#E1F5FE"]
+	id0 [label="0: Identity" fillcolor="#E1F5FE"]
+	input -> id0
+	subgraph cluster_rgb {
+		color=blue label="RGB Branch" style=dashed
+		rgb1 [label="1: ConvSplitRGB" fillcolor="#BBDEFB"]
+		rgb2 [label="2: Conv (P2)" fillcolor="#BBDEFB"]
+		rgb3 [label="3: C2f" fillcolor="#BBDEFB"]
+		rgb4 [label="4: Conv (P3)" fillcolor="#BBDEFB"]
+		rgb5 [label="5: C2f (RGB P3)" fillcolor="#90CAF9"]
+		rgb6 [label="6: Conv (P4)" fillcolor="#BBDEFB"]
+		rgb7 [label="7: C2f (RGB P4)" fillcolor="#90CAF9"]
+		rgb8 [label="8: Conv (P5)" fillcolor="#BBDEFB"]
+		rgb9 [label="9: C2f" fillcolor="#BBDEFB"]
+		rgb10 [label="10: SPPF (RGB P5)" fillcolor="#90CAF9"]
+		rgb1 -> rgb2
+		rgb2 -> rgb3
+		rgb3 -> rgb4
+		rgb4 -> rgb5
+		rgb5 -> rgb6
+		rgb6 -> rgb7
+		rgb7 -> rgb8
+		rgb8 -> rgb9
+		rgb9 -> rgb10
+	}
+	subgraph cluster_thermal {
+		color=red label="Thermal Branch" style=dashed
+		t11 [label="11: ConvSplitThermal" fillcolor="#FFCDD2"]
+		t12 [label="12: Conv (P2)" fillcolor="#FFCDD2"]
+		t13 [label="13: C2f" fillcolor="#FFCDD2"]
+		t14 [label="14: Conv (P3)" fillcolor="#FFCDD2"]
+		t15 [label="15: C2f (T P3)" fillcolor="#EF9A9A"]
+		t16 [label="16: Conv (P4)" fillcolor="#FFCDD2"]
+		t17 [label="17: C2f (T P4)" fillcolor="#EF9A9A"]
+		t18 [label="18: Conv (P5)" fillcolor="#FFCDD2"]
+		t19 [label="19: C2f" fillcolor="#FFCDD2"]
+		t20 [label="20: SPPF (T P5)" fillcolor="#EF9A9A"]
+		t11 -> t12
+		t12 -> t13
+		t13 -> t14
+		t14 -> t15
+		t15 -> t16
+		t16 -> t17
+		t17 -> t18
+		t18 -> t19
+		t19 -> t20
+	}
+	id0 -> rgb1
+	id0 -> t11
+	f21 [label="21: CrossModalFusion (P3)" fillcolor="#C8E6C9" shape=hexagon]
+	f22 [label="22: CrossModalFusion (P4)" fillcolor="#C8E6C9" shape=hexagon]
+	f23 [label="23: CrossModalFusion (P5)" fillcolor="#C8E6C9" shape=hexagon]
+	rgb5 -> f21
+	t15 -> f21
+	rgb7 -> f22
+	t17 -> f22
+	rgb10 -> f23
+	t20 -> f23
+	n24 [label="24: Upsample (P5->P4)" fillcolor="#FFF9C4"]
+	n25 [label="25: Concat (24+22)" fillcolor="#FFF9C4"]
+	n26 [label="26: DilatedC2f (Context+)" fillcolor="#FFF176"]
+	n27 [label="27: Upsample (P4->P3)" fillcolor="#FFF9C4"]
+	n28 [label="28: Concat (27+21)" fillcolor="#FFF9C4"]
+	n29 [label="29: DilatedC2f (Context+)" fillcolor="#FFF176"]
+	f23 -> n24
+	n24 -> n25
+	f22 -> n25
+	n25 -> n26
+	n26 -> n27
+	n27 -> n28
+	f21 -> n28
+	n28 -> n29
+	head [label="36: Detect Head" fillcolor="#F8BBD0" shape=component]
+	n29 -> head [label=P3]
+	p4_out [label="32: C2f (P4 Out)" fillcolor="#FFF9C4"]
+	p5_out [label="35: C2f (P5 Out)" fillcolor="#FFF9C4"]
+	n26 -> p4_out [style=dotted]
+	p4_out -> head [label=P4]
+	f23 -> p5_out [style=dotted]
+	p5_out -> head [label=P5]
+}

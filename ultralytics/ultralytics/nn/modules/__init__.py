@@ -87,8 +87,8 @@ from .conv import (
     CBAM_Module,
     CrossModalFusion,
     DilatedBottleneck,
-    DilatedC2f
-
+    DilatedC2f,
+    Fusion_V2
 )
 from .head import (
     OBB,
@@ -213,5 +213,6 @@ __all__ = (
     "CBAM_Module",
     "Cross_ModelFusion",
     "DilatedBottleneck",
-    "DilatedC2f"
+    "DilatedC2f",
+    "Fusion_V2"
 )

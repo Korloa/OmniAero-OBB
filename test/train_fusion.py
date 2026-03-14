@@ -3,12 +3,12 @@ from ultralytics import YOLO
 
 if __name__ == '__main__':
     # 1. 加载模型结构
-    model = YOLO("ultralytics/cfg/models/v8/yolov8-rgbt.yaml")
+    model = YOLO("ultralytics/cfg/models/26/yolo26-fusion.yaml")
 
     # 2. 加载预训练权重 (迁移学习)
     # YOLO 会自动跳过形状不匹配的第一层，加载后面匹配的层
     try:
-        model.load("yolov8n-obb.pt")
+        model.load("yolo26n-obb.pt")
         print("预训练权重加载成功 (部分层)")
     except Exception as e:
         print(f"权重加载提示: {e}")
@@ -29,5 +29,5 @@ if __name__ == '__main__':
         hsv_h=0.0, hsv_s=0.0, hsv_v=0.0, 
         mosaic=1.0, 
         mixup=0.1,           # 【新增】增加 mixup 增强，防止过拟合
-        name="OmniAero_Fusion_HighRes" 
+        name="OmniAero_Fusion_26_V1"
     )

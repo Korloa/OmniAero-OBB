@@ -1,0 +1,52 @@
+# Ultralytics YOLO26 🚀, AGPL-3.0 license
+# YOLO26n-RGB-IR-Fusion model configuration (End-to-End NMS-Free)
+
+# Parameters
+nc: 5 # 类别数量 (请根据你的数据集自行修改)
+ch: 4  # 重要：指定输入通道数为 4 (3通道 RGB + 1通道 IR)
+
+# YOLO26 核心特性
+end2end: True  # 开启 YOLO26 的端到端推理模式 (无 NMS)
+reg_max: 1     # 移除 DFL (Distribution Focal Loss) 模块
+
+scales:
+  # [depth, width, max_channels]
+  n: [0.50, 0.25, 1024] # YOLO26n (Nano 版本专属缩放因子)
+
+# YOLO26 Backbone (引入 C3k2 与 C2PSA)
+backbone:
+  #[from, repeats, module, args]
+  # 第一层替换为你的 Fusion 或 FusionImproved 模块
+  # args: [输出通道数 c2, 卷积核 k, 步长 s]
+  - [-1, 1, Fusion_V2, [64, 3, 2]]       # 0-P1/2  (输入4通道，输出64通道特征图)
+  
+  - [-1, 1, Conv, [128, 3, 2]]        # 1-P2/4
+  - [-1, 2, C3k2, [256, False, 0.25]] # 2
+  - [-1, 1, Conv, [256, 3, 2]]        # 3-P3/8
+  - [-1, 2, C3k2, [512, False, 0.25]] # 4
+  - [-1, 1, Conv, [512, 3, 2]]        # 5-P4/16
+  - [-1, 2, C3k2, [512, True]]        # 6
+  - [-1, 1, Conv, [1024, 3, 2]]       # 7-P5/32
+  - [-1, 2, C3k2, [1024, True]]       # 8
+  - [-1, 1, SPPF, [1024, 5]]          # 9 
+  - [-1, 2, C2PSA, [1024]]            # 10 (YOLO26 特有的位置敏感注意力块)
+
+# YOLO26 Head
+head:
+  - [-1, 1, nn.Upsample,[None, 2, "nearest"]]
+  - [[-1, 6], 1, Concat, [1]]         # cat backbone P4
+  - [-1, 2, C3k2,[512, False]]       # 13
+
+  - [-1, 1, nn.Upsample,[None, 2, "nearest"]]
+  - [[-1, 4], 1, Concat, [1]]         # cat backbone P3
+  - [-1, 2, C3k2,[256, False]]       # 16 (P3/8-small)
+
+  - [-1, 1, Conv, [256, 3, 2]]
+  - [[-1, 13], 1, Concat, [1]]        # cat head P4
+  - [-1, 2, C3k2, [512, False]]       # 19 (P4/16-medium)
+
+  - [-1, 1, Conv, [512, 3, 2]]
+  - [[-1, 10], 1, Concat, [1]]        # cat head P5 (注意这里连接的是 10 层的 C2PSA 输出)
+  - [-1, 2, C3k2, [1024, True]]       # 22 (P5/32-large)
+
+  - [[16, 19, 22], 1, Detect,[nc]]   # Detect(P3, P4, P5)
