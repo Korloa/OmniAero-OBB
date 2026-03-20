@@ -41,16 +41,18 @@ def run_fusion_inference(rgb_path, ir_path, weights_path):
     # 2. 读取图像
     rgb_img = cv2.imread(rgb_path)
     ir_img = cv2.imread(ir_path, cv2.IMREAD_GRAYSCALE)
-    
+
+    print(ir_img.shape)
     if rgb_img is None or ir_img is None:
         raise ValueError("无法读取图像，请检查路径！")
         
     # 对齐尺寸 (防止原图 RGB 和 IR 尺寸有极微小差异)
     if ir_img.shape[:2] != rgb_img.shape[:2]:
-        ir_img = cv2.resize(ir_img, (rgb_img.shape[1], rgb_img.shape[0]))
+       ir_img = cv2.resize(ir_img, (rgb_img.shape[1], rgb_img.shape[0]))
         
-    ir_img = np.expand_dims(ir_img, axis=-1)
-
+   # ir_img = np.expand_dims(ir_img, axis=-1)
+    print(ir_img.shape)
+    print(rgb_img.shape)
     # 3. 拼接成 4 通道
     img_4c = np.concatenate([rgb_img, ir_img], axis=-1)  # [H, W, 4]
 
@@ -103,18 +105,20 @@ def run_fusion_inference(rgb_path, ir_path, weights_path):
         print("未检测到任何目标。")
 
     # 7. 保存并展示结果
-    output_path = "fusion_inference_result2.jpg"
+    output_path = "fusion_inference_result_1.jpg"
     cv2.imwrite(output_path, draw_img)
     print(f"结果已保存至: {output_path}")
 
 if __name__ == '__main__':
     # ================= 配置区域 =================
     # 替换为你实际训练出的 best.pt 路径
-    WEIGHTS_PATH = "runs/obb/OmniAero_Fusion_HighRes5/weights/best.pt"
+    WEIGHTS_PATH = "F:/work/OmniAero-OBB/src/best.pt"
     
     # 挑一张你的测试图片和对应的红外图片
-    RGB_TEST_PATH = "/mnt/workspace/OmniAero-OBB/src/dataset/test/images/test/00031.jpg"
-    IR_TEST_PATH  = "/mnt/workspace/OmniAero-OBB/src/dataset/test/images/testr/00031.jpg"
+    RGB_TEST_PATH = "F:/work/OmniAero-OBB/src/bus_008/rgb/000000.jpg"
+    IR_TEST_PATH  = "F:/work/OmniAero-OBB/src/bus_008/ir/000000.jpg"
     # ==========================================
+    #F:/work/OmniAero-OBB/src/bus_031/rgb
+    #/mnt/workspace/OmniAero-OBB/src/dataset/test/images/testr/00031.jpg
 
     run_fusion_inference(RGB_TEST_PATH, IR_TEST_PATH, WEIGHTS_PATH)

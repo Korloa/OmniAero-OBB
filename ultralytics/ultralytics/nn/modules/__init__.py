@@ -60,6 +60,11 @@ from .block import (
     SCDown,
     TorchVision,
     C2f_Transformer,
+    RGB_Extract,
+    Feature_Add,
+    IR_Extract,
+    Cross_Modal_Attention,
+    PassThrough
 )
 from .conv import (
     CBAM,
@@ -87,7 +92,8 @@ from .conv import (
     CBAM_Module,
     CrossModalFusion,
     DilatedBottleneck,
-    DilatedC2f
+    DilatedC2f,
+    Fusion_V2,
 
 )
 from .head import (
@@ -213,5 +219,11 @@ __all__ = (
     "CBAM_Module",
     "Cross_ModelFusion",
     "DilatedBottleneck",
-    "DilatedC2f"
+    "DilatedC2f",
+    "Fusion_V2",
+    "IR_Extract",
+    "RGB_Extract",
+    "Feature_Add",
+    "Cross_Modal_Attention",
+    "PassThrough"
 )

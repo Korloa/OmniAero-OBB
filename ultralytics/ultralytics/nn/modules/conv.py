@@ -34,7 +34,8 @@ __all__ = (
     "CBAM_Module",
     "CrossModalFusion",
     "DilatedBottleneck",
-    "DilatedC2f"
+    "DilatedC2f",
+    "Fusion_V2",
 )
 
 
@@ -1000,3 +1001,88 @@ class DilatedC2f(nn.Module):
         y = list(self.cv1(x).chunk(2, 1))
         y.extend(m(y[-1]) for m in self.m)
         return self.cv2(torch.cat(y, 1))
+
+
+class Fusion_V2(nn.Module):
+    def __init__(self, c1, c2, k=3, s=2, p=None, g=1, d=1, act=True):
+        """
+        改进版 Fusion 模块
+        Args:
+            c1: 输入总通道数 (通常为 4: 3 RGB + 1 IR)
+            c2: 融合后的输出通道数
+        """
+        super().__init__()
+        # from .conv import autopad
+        pad = autopad(k, p, d)
+
+        # 修复 c1 参数未使用的问题 (支持扩展，比如如果输入是 5 通道则前三个RGB，后两个IR)
+        c_rgb = 3
+        c_ir = c1 - c_rgb if c1 > 3 else 1
+
+        # 改进 1: 独立提取特征并立即标准化 (Conv + BN)
+        # bias=False 必须配合紧跟的 BN 使用才有意义
+        self.conv_rgb = nn.Sequential(
+            nn.Conv2d(c_rgb, c2, k, s, pad, groups=g, dilation=d, bias=False),
+            nn.BatchNorm2d(c2)
+        )
+        self.conv_ir = nn.Sequential(
+            nn.Conv2d(c_ir, c2, k, s, pad, groups=g, dilation=d, bias=False),
+            nn.BatchNorm2d(c2)
+        )
+
+        # 改进 2: 空间-通道级动态注意力 (Pixel-wise & Channel-wise)
+        # 不再使用全图平均池化，而是让网络输出 [B, 2*c2, H, W] 的密集权重
+        hidden_dim = max(16, c2 // 2)
+        self.attention = nn.Sequential(
+            # 使用 1x1 卷积直接在空间上交互，保留 H 和 W 维度
+            nn.Conv2d(c2 * 2, hidden_dim, 1, bias=False),
+            nn.BatchNorm2d(hidden_dim),
+            nn.ReLU(inplace=True),
+            # 输出 2*c2 个通道，即为 RGB 和 IR 分别生成 c2 个通道的权重
+            nn.Conv2d(hidden_dim, c2 * 2, 1, bias=True)
+            # 移除了 Softmax，放到 forward 中计算以提高数值稳定性
+        )
+
+        self.act = nn.SiLU() if act is True else (act if isinstance(act, nn.Module) else nn.Identity())
+
+    def forward(self, x):
+        # 改进 3: 优化输入拆分逻辑。
+        # 建议：在 YOLO 源码的 BaseModel.forward_dummy 中把测 stride 的张量改成 4 通道，
+        # 这样这里就可以去掉 if-else，直接写 x_rgb, x_ir = torch.split(x,[3, 1], dim=1)
+
+        # 为了兼容你原有的 YOLO 探测逻辑保留的写法，但使用了更优雅的 slice
+        if x.shape[1] == 3:
+            x_rgb = x
+            x_ir = torch.zeros_like(x[:, 0:1, ...])
+        else:
+            x_rgb = x[:, :3, ...]
+            x_ir = x[:, 3:, ...]  # 支持哪怕 IR 是多通道的情况
+
+        # 提取特征[B, c2, H, W]
+        feat_rgb = self.conv_rgb(x_rgb)
+        feat_ir = self.conv_ir(x_ir)
+
+        # 拼接特征[B, 2*c2, H, W]
+        cat_feat = torch.cat([feat_rgb, feat_ir], dim=1)
+
+        # 计算权重 logits [B, 2*c2, H, W]
+        attn_logits = self.attention(cat_feat)
+
+        # 改进 4: Reshape 并使用 Softmax 计算竞争权重
+        # 将维度变换为 [B, 2, c2, H, W]，在 dim=1 (模态维度) 做 Softmax
+        # 这样每一个特征图的每一个像素，都有独立的 rgb 和 ir 比例
+        B, C_2, H, W = attn_logits.shape
+        c2 = C_2 // 2
+        attn_logits = attn_logits.view(B, 2, c2, H, W)
+
+        # 互补归一化 (W_rgb + W_ir = 1)
+        weights = torch.softmax(attn_logits, dim=1)
+
+        w_rgb = weights[:, 0, ...]  # [B, c2, H, W]
+        w_ir = weights[:, 1, ...]  # [B, c2, H, W]
+
+        # 加权融合
+        feat_fused = (feat_rgb * w_rgb) + (feat_ir * w_ir)
+
+        # 输出激活
+        return self.act(feat_fused)

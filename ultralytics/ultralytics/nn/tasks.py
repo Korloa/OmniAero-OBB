@@ -85,6 +85,12 @@ from ultralytics.nn.modules import (
     CrossModalFusion,
     DilatedBottleneck,
     DilatedC2f,
+    Fusion_V2,
+    Cross_Modal_Attention,
+    IR_Extract,
+    RGB_Extract,
+    Feature_Add,
+    PassThrough
 )
 from ultralytics.utils import DEFAULT_CFG_DICT, LOGGER, YAML, colorstr, emojis
 from ultralytics.utils.checks import check_requirements, check_suffix, check_yaml
@@ -1631,6 +1637,11 @@ def parse_model(d, ch, verbose=True):
             # CrossModalFusion,
             DilatedBottleneck,
             DilatedC2f,
+            Fusion_V2,
+            RGB_Extract,
+            IR_Extract,
+            # Feature_Add,
+            # Cross_Modal_Attention,
         }
     )
     repeat_modules = frozenset(  # modules with 'repeat' arguments
@@ -1743,6 +1754,39 @@ def parse_model(d, ch, verbose=True):
             c1 = ch[f[0]]
             c2 = c1  # 输出通道数等于输入通道数
             args = [c1]  # 重新构造参数传给 __init__
+            # ================= 🚀 添加您的自定义多输入模块解析逻辑 =================
+            # ================= 🚀 1. 早期双分支残差相加 =================
+        elif m is Feature_Add:
+            # f 是输入层的索引列表 (例如 [1, 0])
+            # 将它们对应的通道数打包成列表，传给 Feature_Add 的 c1
+            c1 = [ch[x] for x in f]
+
+            c2 = args[0]
+            # 同样应用 YOLO 的全局宽度缩放
+            if c2 != nc:
+                c2 = make_divisible(min(c2, max_channels) * width, 8)
+
+            # 重新打包给模块初始化: __init__(self, c1, c2)
+            args = [c1, c2, *args[1:]]
+
+        # ================= 🚀 2. 深层跨模态 Transformer 融合 =================
+        elif m is Cross_Modal_Attention:
+            # f 是输入层的索引列表 (例如 [8, 16] 或 [12, 18])
+            # 同样打包成列表传给 c1 (ch_q 和 ch_kv)
+            c1 = [ch[x] for x in f]
+
+            c2 = args[0]
+            if c2 != nc:
+                c2 = make_divisible(min(c2, max_channels) * width, 8)
+
+            # 重新打包给模块初始化: __init__(self, c1, c2, num_heads, ...)
+            args = [c1, c2, *args[1:]]
+        # ====================================================================
+        # =========================================================================
+        elif m is PassThrough:
+            c2 = ch[f] # 输出通道数直接等于输入通道数
+            args = []
+
         else:
             c2 = ch[f]
 

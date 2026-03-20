@@ -1,0 +1,69 @@
+digraph YOLOv8_Fusion_OBB {
+	fontname="Microsoft YaHei" rankdir=TB size="12,12"
+	node [fontname="Microsoft YaHei" shape=box style="filled,rounded"]
+	Input [label="输入图像
+(RGB + IR = 4通道)" fillcolor="#f9d0c4"]
+	subgraph cluster_Backbone {
+		bgcolor="#f0f8ff" color=blue label="Backbone 主干网络" style=dashed
+		L0 [label="Layer 0: Fusion 模块
+(64通道, P1/2)" fillcolor="#ffb3ba" style="filled,dashed"]
+		L1_2 [label="Layer 1-2: Conv + C2f
+(128通道, P2/4)" fillcolor="#bae1ff"]
+		L3_4 [label="Layer 3-4: Conv + C2f
+(256通道, P3/8)" fillcolor="#bae1ff"]
+		L5_6 [label="Layer 5-6: Conv + C2f
+(512通道, P4/16)" fillcolor="#bae1ff"]
+		L7_8 [label="Layer 7-8: Conv + C2f
+(1024通道, P5/32)" fillcolor="#bae1ff"]
+		L9 [label="Layer 9: SPPF
+(1024通道, P5/32)" fillcolor="#bae1ff"]
+	}
+	subgraph cluster_Neck {
+		bgcolor="#f0fff0" color=green label="Neck / PANet 特征融合" style=dashed
+		Up1 [label="L10: Upsample(2x)" fillcolor="#baffc9"]
+		Cat1 [label="L11: Concat" fillcolor="#baffc9" shape=ellipse]
+		C2f12 [label="L12: C2f (512)" fillcolor="#baffc9"]
+		Up2 [label="L13: Upsample(2x)" fillcolor="#baffc9"]
+		Cat2 [label="L14: Concat" fillcolor="#baffc9" shape=ellipse]
+		C2f15 [label="L15: C2f (256)
+[输出 P3/8 小目标特征]" fillcolor="#baffc9" penwidth=2]
+		Conv1 [label="L16: Conv(s=2)" fillcolor="#baffc9"]
+		Cat3 [label="L17: Concat" fillcolor="#baffc9" shape=ellipse]
+		C2f18 [label="L18: C2f (512)
+[输出 P4/16 中目标特征]" fillcolor="#baffc9" penwidth=2]
+		Conv2 [label="L19: Conv(s=2)" fillcolor="#baffc9"]
+		Cat4 [label="L20: Concat" fillcolor="#baffc9" shape=ellipse]
+		C2f21 [label="L21: C2f (1024)
+[输出 P5/32 大目标特征]" fillcolor="#baffc9" penwidth=2]
+	}
+	subgraph cluster_Head {
+		bgcolor="#fffff0" color=red label="Head 检测头" style=dashed
+		OBB [label="Layer 22: OBB 旋转检测头
+[预测: cx, cy, w, h, angle, class]" fillcolor="#ffffba" penwidth=3]
+	}
+	Input -> L0
+	L0 -> L1_2
+	L1_2 -> L3_4
+	L3_4 -> L5_6
+	L5_6 -> L7_8
+	L7_8 -> L9
+	L9 -> Up1
+	Up1 -> Cat1
+	L5_6 -> Cat1 [label=" 跨层P4 " style=dashed]
+	Cat1 -> C2f12
+	C2f12 -> Up2
+	Up2 -> Cat2
+	L3_4 -> Cat2 [label=" 跨层P3 " style=dashed]
+	Cat2 -> C2f15
+	C2f15 -> Conv1
+	Conv1 -> Cat3
+	C2f12 -> Cat3 [label=" 融合 " style=dashed]
+	Cat3 -> C2f18
+	C2f18 -> Conv2
+	Conv2 -> Cat4
+	L9 -> Cat4 [label=" 融合P5 " style=dashed]
+	Cat4 -> C2f21
+	C2f15 -> OBB [label=" 小目标" color=red penwidth=2]
+	C2f18 -> OBB [label=" 中目标" color=red penwidth=2]
+	C2f21 -> OBB [label=" 大目标" color=red penwidth=2]
+}

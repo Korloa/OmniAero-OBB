@@ -53,6 +53,12 @@ __all__ = (
     "SCDown",
     "TorchVision",
     "C2f_Transformer",
+
+    "IR_Extract",
+    "RGB_Extract",
+    "Cross_Modal_Attention",
+    "Feature_Add",
+    "PassThrough"
 )
 
 
@@ -2125,3 +2131,151 @@ class C2f_Transformer(nn.Module):
         y = list(self.cv1(x).chunk(2, 1))
         y.extend(m(y[-1]) for m in self.m)
         return self.cv2(torch.cat(y, 1))
+
+
+class RGB_Extract(nn.Module):
+    def __init__(self, c1, c2, k=3, s=2):
+        """
+        RGB 光照感知与过滤提取器
+        c1: 输入通道 (通常是4，但我们内部只切前3个)
+        c2: 输出通道
+        """
+        super().__init__()
+        self.conv_rgb = nn.Conv2d(3, c2, k, s, padding=k // 2, bias=False)
+        self.bn1 = nn.BatchNorm2d(c2)
+        self.act1 = nn.SiLU(inplace=True)
+
+        # 光照与质量感知模块 (局部 3x3 审查)
+        hidden_dim = max(16, c2 // 2)
+        self.illumination_perception = nn.Sequential(
+            nn.Conv2d(c2, hidden_dim, 3, padding=1, bias=False),
+            nn.BatchNorm2d(hidden_dim),
+            nn.SiLU(inplace=True),
+            nn.Conv2d(hidden_dim, c2, 1, bias=True)
+        )
+
+    def forward(self, x):
+        # 兼容处理：提取前3个通道(RGB)
+        x_rgb = x[:, :3, :, :]
+
+        # 基础特征提取
+        feat_rgb = self.act1(self.bn1(self.conv_rgb(x_rgb)))
+
+        # 生成质量 Mask 并过滤
+        mask = torch.sigmoid(self.illumination_perception(feat_rgb))
+        return feat_rgb * mask  # 输出纯净的高质量 RGB 特征
+
+
+class IR_Extract(nn.Module):
+    def __init__(self, c1, c2, k=3, s=2):
+        """稳定的红外特征提取器"""
+        super().__init__()
+        c_ir = c1 - 3 if c1 > 3 else 1
+        self.conv_ir = nn.Conv2d(c_ir, c2, k, s, padding=k // 2, bias=False)
+        self.bn = nn.BatchNorm2d(c2)
+        self.act = nn.SiLU(inplace=True)
+
+    def forward(self, x):
+        # 提取最后一个通道(IR)
+        x_ir = x[:, 3:, :, :] if x.shape[1] > 3 else x
+        return self.act(self.bn(self.conv_ir(x_ir)))
+
+
+class Feature_Add(nn.Module):
+    def __init__(self, c1, c2):
+        """
+        简单的残差相加模块，用于 YAML 路由组合
+        c1: list, 长度为2，包含两个输入层的通道数
+        """
+        super().__init__()
+        self.c2 = c2
+
+    def forward(self, x):
+        # x 是一个 list，包含 [ir_stem, rgb_clean_stem]
+        return x[0] + x[1]
+
+
+# ==========================================
+# 2. 跨模态 Transformer 模块 (Cross-Modal)
+# ==========================================
+
+class Cross_Modal_Attention(nn.Module):
+    def __init__(self, c1, c2, num_heads=4, expansion=2):
+        """
+        标准的 Cross-Modal Transformer Block
+        Args:
+            c1: list, [ch_main, ch_rgb_clean]，分别代表主干特征和干净RGB特征的通道数
+            c2: 融合后的输出通道数
+        """
+        super().__init__()
+        ch_q, ch_kv = c1[0], c1[1]
+        self.c2 = c2
+
+        # 1. 维度对齐投影层
+        self.proj_q = nn.Conv2d(ch_q, c2, 1, bias=False) if ch_q != c2 else nn.Identity()
+        self.proj_kv = nn.Conv2d(ch_kv, c2, 1, bias=False) if ch_kv != c2 else nn.Identity()
+
+        # 2. Pre-LayerNorm (比 Post-LN 训练更稳定)
+        self.norm_q = nn.LayerNorm(c2)
+        self.norm_kv = nn.LayerNorm(c2)
+
+        # 3. 标准多头注意力 (batch_first=True 方便处理)
+        self.mha = nn.MultiheadAttention(embed_dim=c2, num_heads=num_heads, batch_first=True)
+
+        # 4. FFN 前馈神经网络
+        self.norm_ffn = nn.LayerNorm(c2)
+        self.ffn = nn.Sequential(
+            nn.Linear(c2, c2 * expansion),
+            nn.GELU(),
+            nn.Linear(c2 * expansion, c2)
+        )
+
+    def forward(self, x):
+        """
+        x: list 包含两个 Tensor -> [main_feat (作为 Query), rgb_clean_feat (作为 Key, Value)]
+        """
+        q_img, kv_img = x[0], x[1]
+        B, C, H, W = q_img.shape
+
+        # 投影到目标维度
+        q = self.proj_q(q_img)
+        kv = self.proj_kv(kv_img)
+
+        # 图像 2D 变 1D 序列 [B, C, H, W] -> [B, H*W, C]
+        q_seq = q.flatten(2).transpose(1, 2)
+        kv_seq = kv.flatten(2).transpose(1, 2)
+
+        # 归一化
+        q_norm = self.norm_q(q_seq)
+        kv_norm = self.norm_kv(kv_seq)
+
+        # ==============================================
+        # Cross Attention 核心:
+        # Query(找线索) = 主干稳定IR特征
+        # Key/Value(素材库) = 干净的RGB特征
+        # ==============================================
+        attn_out, _ = self.mha(q_norm, kv_norm, kv_norm)
+
+        # 残差连接 (将找到的 RGB 细节加回原来的 Query 特征中)
+        out = q_seq + attn_out
+
+        # FFN 与第二个残差连接
+        out = out + self.ffn(self.norm_ffn(out))
+
+        # 恢复图像形状 [B, H*W, C] -> [B, C, H, W]
+        out = out.transpose(1, 2).reshape(B, self.c2, H, W)
+
+        return out
+
+
+class PassThrough(nn.Module):
+    def __init__(self):
+        super().__init__()
+
+    def forward(self, x):
+        if x.shape[1] == 3:
+            b, _, h, w = x.shape
+            ir = torch.zeros((b, 1, h, w), device=x.device, dtype=x.dtype)
+            return torch.cat([x, ir], dim=1)  # 返回一个 (B, 4, H, W) 的 Tensor
+        else:
+            return x
