@@ -37,7 +37,7 @@ if __name__ == '__main__':
     dataset_map = {
         "win": "F:/work/OmniAero-OBB/test/dataset.yaml",
         "dsw": "/mnt/workspace/OmniAero-OBB/test/dataset.yaml",
-        "station": "/2024011184/OmniAero-OBB/test/dataset.yaml"
+        "station": "/2024011184/zhangkaixiang/OmniAero-OBB/test/dataset.yaml"
     }
 
     selected_data_path = dataset_map[args.data_type]
